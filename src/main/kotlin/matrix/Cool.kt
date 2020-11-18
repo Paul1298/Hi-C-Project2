@@ -295,18 +295,48 @@ fun inverseWeight(cool: Cool, startChrom: Int, endChrom: Int, groupId: Int) {
 }
 
 fun inverseHorizontal(cool: Cool, startChrom: Int, endChrom: Int) {
-    val m = mutableMapOf<Int, Pair<LongArray, IntArray>>()
+    // TODO: 18.11.2020 think about collection. You can use array in first cycle
+    //  and List in second
+    val m = mutableMapOf<Int, Pair<MutableList<Long>, MutableList<Int>>>()
+
+    val breakMap = mutableMapOf<Int, Int>()
 
     for (i in startChrom until endChrom) {
+        val startIndex = cool.indexes.bin1_offset[i].toInt()
+
+        var breakIndex = startIndex
+        while (breakIndex < cool.pixels.bin1_id.size &&
+            cool.pixels.bin1_id[startIndex] == cool.pixels.bin1_id[breakIndex] && cool.pixels.bin2_id[breakIndex] < endChrom
+        ) breakIndex += 1
+        breakMap[i] = breakIndex
+//        val n
+        val end = cool.indexes.bin1_offset[i + 1].toInt()
+
+        val indices = breakIndex until end
+
         val bin2Array =
-            cool.pixels.bin2_id.sliceArray(cool.indexes.bin1_offset[i].toInt() until cool.indexes.bin1_offset[i + 1].toInt())
+            cool.pixels.bin2_id.sliceArray(indices).toMutableList()
         val countArray =
-            cool.pixels.count.sliceArray(cool.indexes.bin1_offset[i].toInt() until cool.indexes.bin1_offset[i + 1].toInt())
+            cool.pixels.count.sliceArray(indices).toMutableList()
 
         m[i] = Pair(bin2Array, countArray)
     }
 
-    println("$startChrom $endChrom")
+    for (i in startChrom until endChrom) {
+        val startIndex = cool.indexes.bin1_offset[i].toInt()
+        val breakIndex = breakMap[i]
+
+        println("row $i")
+        for (j in startIndex until breakIndex!!) {
+            val bin2Id = cool.pixels.bin2_id[j].toInt()
+            println(bin2Id)
+
+            m[bin2Id]!!.first.add(0, (endChrom - 1 - i + startChrom).toLong())
+            m[bin2Id]!!.second.add(0, cool.pixels.count[j])
+        }
+    }
+
+//    println("$startChrom $endChrom")
 
     var prevIndex = cool.indexes.bin1_offset[startChrom].toInt()
     for (i in endChrom - 1 downTo startChrom) {
@@ -326,7 +356,7 @@ fun inverseVertical(cool: Cool, startChrom: Int, endChrom: Int) {
     // TODO: 17.11.2020 think about multiple `indexOfFirst`
     var inverseIndex = -1
     var swapArray = mutableListOf<Pair<Long, Int>>()
-    for (i in 0 until cool.indexes.bin1_offset[endChrom].toInt()) {
+    for (i in 0 until cool.indexes.bin1_offset[startChrom].toInt()) {
         if (inverseIndex == -1 && cool.pixels.bin2_id[i] >= startChrom && cool.pixels.bin2_id[i] < endChrom) {
             inverseIndex = i
 
@@ -335,12 +365,13 @@ fun inverseVertical(cool: Cool, startChrom: Int, endChrom: Int) {
         }
 
         // TODO: 18.11.2020 check bin1_id changing
+        // TODO: 18.11.2020 write logic in comment
         if (inverseIndex != -1) {
             if (cool.pixels.bin1_id[i - 1] == cool.pixels.bin1_id[i] && cool.pixels.bin2_id[i] < endChrom) {
                 swapArray.add(Pair(cool.pixels.bin2_id[i], cool.pixels.count[i]))
             } else {
                 swapArray.asReversed().forEach {
-                    cool.pixels.bin2_id[inverseIndex] = endChrom - (it.first - startChrom)
+                    cool.pixels.bin2_id[inverseIndex] = endChrom - 1 - (it.first - startChrom)
                     cool.pixels.count[inverseIndex] = it.second
                     inverseIndex += 1
 
@@ -356,8 +387,7 @@ fun inverse(cool: Cool, groupId: Int) {
 //    val binLength =
 //        cool.indexes.chrom_offset.mapIndexed { index, l -> if (index > 0) l - cool.indexes.chrom_offset[index - 1] else l }
 //    val w = binLength.indexOfFirst { it > 10 } - 1
-    val w = 95
-//    println(w)
+    val w = 94
 
     val startChrom = cool.indexes.chrom_offset[w].toInt()
     val endChrom = cool.indexes.chrom_offset[w + 1].toInt()
