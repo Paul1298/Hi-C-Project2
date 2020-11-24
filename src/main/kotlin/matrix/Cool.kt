@@ -2,13 +2,14 @@ package matrix
 
 import hdf.hdf5lib.H5
 import hdf.hdf5lib.HDF5Constants
+import java.io.File
 import kotlin.reflect.full.memberProperties
 
 data class Bins(
     val chrom: IntArray,
     val end: IntArray,
     val start: IntArray,
-    val weight: DoubleArray
+    val weight: ArrayList<Double>
 )
 
 data class Chroms(
@@ -22,9 +23,9 @@ data class Indexes(
 )
 
 data class Pixels(
-    val bin1_id: LongArray,
-    val bin2_id: LongArray,
-    val count: IntArray
+    val bin1_id: ArrayList<Long>,
+    val bin2_id: ArrayList<Long>,
+    val count: ArrayList<Int>
 )
 
 data class Cool(val groupId: Int) {
@@ -35,7 +36,7 @@ data class Cool(val groupId: Int) {
 
     init {
         val (chrom, end, start, weight) = getGroup(groupId, "bins")
-        bins = Bins(chrom as IntArray, end as IntArray, start as IntArray, weight as DoubleArray)
+        bins = Bins(chrom as IntArray, end as IntArray, start as IntArray, weight as ArrayList<Double>)
 
         val (length, name) = getGroup(groupId, "chroms")
         chroms = Chroms(length as IntArray, name as Array<String>)
@@ -44,7 +45,7 @@ data class Cool(val groupId: Int) {
         indexes = Indexes(bin1_offset as LongArray, chrom_offset as LongArray)
 
         val (bin1_id, bin2_id, count) = getGroup(groupId, "pixels")
-        pixels = Pixels(bin1_id as LongArray, bin2_id as LongArray, count as IntArray)
+        pixels = Pixels(bin1_id as ArrayList<Long>, bin2_id as ArrayList<Long>, count as ArrayList<Int>)
     }
 }
 
@@ -58,7 +59,7 @@ fun getDataset(datasetId: Int, datasetName: String): Any {
 
     val tid = H5.H5Dget_type(datasetId)
 
-    val dataRead: Any
+    var dataRead: Any
     when (datasetName) {
         "weight" -> dataRead = DoubleArray(size)
         "name" -> {
@@ -95,6 +96,18 @@ fun getDataset(datasetId: Int, datasetName: String): Any {
         HDF5Constants.H5S_ALL, HDF5Constants.H5S_ALL, HDF5Constants.H5P_DEFAULT,
         dataRead
     )
+
+    if (datasetName == "weight") {
+        dataRead = (dataRead as DoubleArray).toList()
+    }
+
+    if (datasetName == "bin1_id" || datasetName == "bin2_id") {
+        dataRead = (dataRead as LongArray).toList()
+    }
+
+    if (datasetName == "count") {
+        dataRead = (dataRead as IntArray).toList()
+    }
 
     return dataRead
 }
@@ -274,7 +287,7 @@ fun writeCoolToFile(cool: Cool, fname: String, resolution: Int) {
 }
 
 fun inverseWeight(cool: Cool, startChrom: Int, endChrom: Int, groupId: Int) {
-    cool.bins.weight.reverse(startChrom, endChrom)
+    cool.bins.weight.subList(startChrom, endChrom).reverse()
 
     val bGroupId = H5.H5Gopen(groupId, "bins", HDF5Constants.H5P_DEFAULT)
 
@@ -297,7 +310,7 @@ fun inverseWeight(cool: Cool, startChrom: Int, endChrom: Int, groupId: Int) {
 fun inverseHorizontal(cool: Cool, startChrom: Int, endChrom: Int) {
     // TODO: 18.11.2020 think about collection. You can use array in first cycle
     //  and List in second
-    val m = mutableMapOf<Int, Pair<MutableList<Long>, MutableList<Int>>>()
+    val m = mutableMapOf<Int, Pair<ArrayList<Long>, ArrayList<Int>>>()
 
     val breakMap = mutableMapOf<Int, Int>()
 
@@ -309,17 +322,17 @@ fun inverseHorizontal(cool: Cool, startChrom: Int, endChrom: Int) {
             cool.pixels.bin1_id[startIndex] == cool.pixels.bin1_id[breakIndex] && cool.pixels.bin2_id[breakIndex] < endChrom
         ) breakIndex += 1
         breakMap[i] = breakIndex
-//        val n
+
         val end = cool.indexes.bin1_offset[i + 1].toInt()
 
         val indices = breakIndex until end
 
         val bin2Array =
-            cool.pixels.bin2_id.sliceArray(indices).toMutableList()
+            cool.pixels.bin2_id.slice(indices)
         val countArray =
-            cool.pixels.count.sliceArray(indices).toMutableList()
+            cool.pixels.count.slice(indices)
 
-        m[i] = Pair(bin2Array, countArray)
+        m[i] = Pair(bin2Array, countArray) as Pair<ArrayList<Long>, ArrayList<Int>>
     }
 
     for (i in startChrom until endChrom) {
@@ -357,7 +370,7 @@ fun inverseVertical(cool: Cool, startChrom: Int, endChrom: Int) {
     var inverseIndex = -1
     var swapArray = mutableListOf<Pair<Long, Int>>()
     for (i in 0 until cool.indexes.bin1_offset[startChrom].toInt()) {
-        if (inverseIndex == -1 && cool.pixels.bin2_id[i] >= startChrom && cool.pixels.bin2_id[i] < endChrom) {
+        if (inverseIndex == -1 && cool.pixels.bin2_id[i] in startChrom until endChrom) {
             inverseIndex = i
 
             swapArray.add(Pair(cool.pixels.bin2_id[i], cool.pixels.count[i]))
@@ -445,6 +458,8 @@ fun inverse(cool: Cool, groupId: Int) {
     H5.H5Dclose(datasetId)
 
     if (pGroupId >= 0) H5.H5Gclose(pGroupId)
+
+    recalculateIndex(cool, groupId)
 }
 
 fun recalculateIndex(cool: Cool, groupId: Int) {
@@ -477,8 +492,179 @@ fun recalculateIndex(cool: Cool, groupId: Int) {
 //    println(cool.indexes.bin1_offset.joinToString(separator = "\n"))
 }
 
+fun moveWeight(cool: Cool, startChrom: Int, endChrom: Int, destination: Int, groupId: Int) {
+    val buf = cool.bins.weight.slice(startChrom until endChrom)
+    cool.bins.weight.subList(startChrom, endChrom).clear()
+    cool.bins.weight.addAll(destination, buf)
+
+    val bGroupId = H5.H5Gopen(groupId, "bins", HDF5Constants.H5P_DEFAULT)
+
+    val datasetId = H5.H5Dopen(bGroupId, "weight", HDF5Constants.H5P_DEFAULT)
+    val tid = H5.H5Dget_type(datasetId)
+    val dspace = H5.H5Dget_space(datasetId)
+
+    H5.H5Dwrite(
+        datasetId,
+        tid,
+        HDF5Constants.H5S_ALL,
+        dspace,
+        HDF5Constants.H5P_DEFAULT,
+        cool.bins.weight.toDoubleArray()
+    )
+
+    H5.H5Dclose(datasetId)
+}
+
+fun move(cool: Cool, groupId: Int) {
+    val w = 87
+
+    val startChrom = cool.indexes.chrom_offset[w].toInt()
+    val endChrom = cool.indexes.chrom_offset[w + 1].toInt()
+
+    val insertChrom = 94
+    val destination = cool.indexes.chrom_offset[insertChrom].toInt()
+
+    val chromLengthInBP = cool.indexes.bin1_offset[endChrom] - cool.indexes.bin1_offset[startChrom]
+    var insertBin = cool.indexes.bin1_offset[destination].toInt()
+    val insertEnd = cool.indexes.bin1_offset[destination].toInt() + chromLengthInBP.toInt()
+
+    moveWeight(cool, startChrom, endChrom, destination, groupId)
+
+    var source = Array(cool.bins.chrom.size) { mutableMapOf<Long, Int>() }
+
+    val removeIndices = ArrayList<Int>()
+
+    for (i in 0 until cool.indexes.bin1_offset[startChrom].toInt()) {
+        if (cool.pixels.bin2_id[i] in startChrom until endChrom) {
+            val newId = destination + (cool.pixels.bin2_id[i] - startChrom)
+            source[cool.pixels.bin1_id[i].toInt()][newId] = cool.pixels.count[i]
+            removeIndices.add(i)
+        }
+    }
+
+    for (i in cool.indexes.bin1_offset[startChrom].toInt() until cool.indexes.bin1_offset[endChrom].toInt()) {
+        val newId = destination + (cool.pixels.bin1_id[i] - startChrom)
+
+        source[cool.pixels.bin2_id[i].toInt()][newId] = cool.pixels.count[i]
+        if (cool.pixels.bin2_id[i] < endChrom && cool.pixels.bin1_id[i] != cool.pixels.bin2_id[i]) {
+            val newId = destination + (cool.pixels.bin2_id[i] - startChrom)
+            source[cool.pixels.bin1_id[i].toInt()][newId] = cool.pixels.count[i]
+        }
+        removeIndices.add(i)
+    }
+
+    val src = source.toMutableList()
+
+    val buf = src.slice(startChrom until endChrom)
+    src.subList(startChrom, endChrom).clear()
+    src.addAll(destination, buf)
+
+    source = src.toTypedArray()
+
+    println(removeIndices.size)
+    println(cool.pixels.bin1_id.size)
+    removeIndices.asReversed().forEach {
+        cool.pixels.bin1_id.removeAt(it)
+        cool.pixels.bin2_id.removeAt(it)
+        cool.pixels.count.removeAt(it)
+    }
+
+    println(cool.pixels.bin1_id.size)
+//    println(source[5].containsKey(5))
+//    return
+
+    for (i in destination until destination + endChrom - startChrom) {
+        for (j in destination until source.size) {
+            var tmpInd = 0
+
+            if (source[j].containsKey(i.toLong())) {
+//                println("this")
+                cool.pixels.bin1_id.add(insertBin + tmpInd, i.toLong())
+                cool.pixels.bin2_id.add(insertBin + tmpInd, j.toLong())
+//                cool.pixels.count.add(insertBin + tmpInd, source[j][i.toLong()]!!)
+                cool.pixels.count.add(insertBin + tmpInd, 5000)
+                tmpInd += 1
+            }
+        }
+//        val src = source.drop(destination).filter { it.containsKey(destination + i.toLong()) }
+    }
+
+    var insertRow: Long = -1
+    for (i in insertBin - 1..0) {
+        if (insertRow != cool.pixels.bin1_id[i] && cool.pixels.bin2_id[i] < destination) {
+            println("no, this")
+            cool.pixels.bin1_id.addAll(i + 1, source[cool.pixels.bin1_id[i].toInt()].keys.sorted())
+            cool.pixels.bin2_id.addAll(i + 1, source[cool.pixels.bin1_id[i].toInt()].keys.sorted())
+            cool.pixels.count.addAll(i + 1, source[cool.pixels.bin1_id[i].toInt()].values.sorted())
+
+            insertRow = cool.pixels.bin1_id[i]
+        }
+    }
+
+    println("check")
+    println(cool.pixels.bin1_id.size)
+
+    val pGroupId = H5.H5Gopen(groupId, "pixels", HDF5Constants.H5P_DEFAULT)
+
+    var datasetId = H5.H5Dopen(pGroupId, "bin1_id", HDF5Constants.H5P_DEFAULT)
+    var tid = H5.H5Dget_type(datasetId)
+    var dspace = H5.H5Dget_space(datasetId)
+
+    H5.H5Dwrite(
+        datasetId,
+        tid,
+        HDF5Constants.H5S_ALL,
+        dspace,
+        HDF5Constants.H5P_DEFAULT,
+        cool.pixels.bin1_id.toLongArray()
+    )
+
+    H5.H5Dclose(datasetId)
+
+    datasetId = H5.H5Dopen(pGroupId, "bin2_id", HDF5Constants.H5P_DEFAULT)
+    tid = H5.H5Dget_type(datasetId)
+    dspace = H5.H5Dget_space(datasetId)
+
+    H5.H5Dwrite(
+        datasetId,
+        tid,
+        HDF5Constants.H5S_ALL,
+        dspace,
+        HDF5Constants.H5P_DEFAULT,
+        cool.pixels.bin2_id.toLongArray()
+    )
+
+    H5.H5Dclose(datasetId)
+
+    datasetId = H5.H5Dopen(pGroupId, "count", HDF5Constants.H5P_DEFAULT)
+    tid = H5.H5Dget_type(datasetId)
+    dspace = H5.H5Dget_space(datasetId)
+
+    H5.H5Dwrite(
+        datasetId,
+        tid,
+        HDF5Constants.H5S_ALL,
+        dspace,
+        HDF5Constants.H5P_DEFAULT,
+        cool.pixels.count.toIntArray()
+    )
+
+    H5.H5Dclose(datasetId)
+
+    if (pGroupId >= 0) H5.H5Gclose(pGroupId)
+
+    recalculateIndex(cool, groupId)
+}
+
 
 fun main() {
+//    val a = arrayOf(1, 2, 3)
+//    a[0] = a[2].also { a[2]=a[0] }
+//    println(a.contentToString())
+//    return
+    // for testing
+    File("src/main/resources/mat18_100k.cool").copyTo(File("src/main/resources/2.cool"), overwrite = true)
+
     val fname = "src/main/resources/2.cool"
     var fileId = -1
     var groupId = -1
@@ -499,9 +685,8 @@ fun main() {
 
     val cool = Cool(groupId)
 
-    inverse(cool, groupId)
-
-    recalculateIndex(cool, groupId)
+//    inverse(cool, groupId)
+    move(cool, groupId)
 
     // Close objects
     try {
