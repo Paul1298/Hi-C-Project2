@@ -1,36 +1,17 @@
 package matrix
 
-import hdf.hdf5lib.H5
-import hdf.hdf5lib.HDF5Constants
+fun moveWeight(cool: Cool, startChrom: Int, endChrom: Int, destination: Int) {
+//    val buf1 = cool.bins.weight.slice(startChrom until endChrom)
+//    cool.bins.weight.subList(startChrom, endChrom).clear()
+//    cool.bins.weight.addAll(destination, buf1)
+    cool.bins.weight.reverse(destination, startChrom)
+    cool.bins.weight.reverse(startChrom, endChrom)
 
-fun moveWeight(cool: Cool, startChrom: Int, endChrom: Int, destination: Int, groupId: Int) {
-    val buf1 = cool.bins.weight.slice(startChrom until endChrom)
-    cool.bins.weight.subList(startChrom, endChrom).clear()
-    cool.bins.weight.addAll(destination, buf1)
+    cool.bins.weight.reverse(destination, endChrom)
 
-    val bGroupId = H5.H5Gopen(groupId, "bins", HDF5Constants.H5P_DEFAULT)
-
-    var datasetId = H5.H5Dopen(bGroupId, "weight", HDF5Constants.H5P_DEFAULT)
-    var tid = H5.H5Dget_type(datasetId)
-    var dspace = H5.H5Dget_space(datasetId)
-
-    H5.H5Dwrite(
-        datasetId,
-        tid,
-        HDF5Constants.H5S_ALL,
-        dspace,
-        HDF5Constants.H5P_DEFAULT,
-        cool.bins.weight.toDoubleArray()
-    )
-
-    H5.H5Dclose(datasetId)
-
-    val buf2 = cool.bins.chrom.slice(destination until endChrom)
-    cool.bins.chrom.subList(destination, endChrom).clear()
-
+    val buf = cool.bins.chrom.slice(destination until endChrom)
     val movedBuf = arrayListOf<Int>()
-
-    val m = buf2.groupingBy { it }.eachCount().toList()
+    val m = buf.groupingBy { it }.eachCount().toList()
 
     movedBuf.addAll(MutableList(m.last().second) { m.first().first })
 
@@ -38,69 +19,21 @@ fun moveWeight(cool: Cool, startChrom: Int, endChrom: Int, destination: Int, gro
         movedBuf.addAll(MutableList(m[i].second) { m[i].first + 1 })
     }
 
-    cool.bins.chrom.addAll(destination, movedBuf)
-
-    datasetId = H5.H5Dopen(bGroupId, "chrom", HDF5Constants.H5P_DEFAULT)
-    tid = H5.H5Dget_type(datasetId)
-    dspace = H5.H5Dget_space(datasetId)
-
-    H5.H5Dwrite(
-        datasetId,
-        tid,
-        HDF5Constants.H5S_ALL,
-        dspace,
-        HDF5Constants.H5P_DEFAULT,
-        cool.bins.chrom.toIntArray()
-    )
-
-    H5.H5Dclose(datasetId)
-    H5.H5Gclose(bGroupId)
+    for (i in destination until endChrom) {
+        cool.bins.chrom[i] = buf[i - destination]
+    }
 }
 
-fun moveChrom(cool: Cool, destination: Int, endChrom: Int, groupId: Int) {
-    val cGroupId = H5.H5Gopen(groupId, "chroms", HDF5Constants.H5P_DEFAULT)
-
-    var datasetId = H5.H5Dopen(cGroupId, "length", HDF5Constants.H5P_DEFAULT)
-    var tid = H5.H5Dget_type(datasetId)
-    var dspace = H5.H5Dget_space(datasetId)
-
+fun moveChrom(cool: Cool, destination: Int, endChrom: Int) {
     cool.chroms.length.reverse(destination, endChrom)
     cool.chroms.length.reverse(destination + 1, endChrom)
 
-    H5.H5Dwrite(
-        datasetId,
-        tid,
-        HDF5Constants.H5S_ALL,
-        dspace,
-        HDF5Constants.H5P_DEFAULT,
-        cool.chroms.length
-    )
-
-    H5.H5Dclose(datasetId)
-
-//    datasetId = H5.H5Dopen(cGroupId, "name", HDF5Constants.H5P_DEFAULT)
-//    tid = H5.H5Dget_type(datasetId)
-//    dspace = H5.H5Dget_space(datasetId)
-//
 //    cool.chroms.name.reverse(destination, endChrom)
 //    cool.chroms.name.reverse(destination + 1, endChrom)
-//
-//    H5.H5Dwrite(
-//        datasetId,
-//        tid,
-//        HDF5Constants.H5S_ALL,
-//        dspace,
-//        HDF5Constants.H5P_DEFAULT,
-//        cool.chroms.name
-//    )
-//
-//    H5.H5Dclose(datasetId)
-
-    H5.H5Gclose(cGroupId)
 }
 
-fun moveLeft(cool: Cool, groupId: Int) {
-    val w = 83
+fun moveLeft(cool: Cool) {
+    val w = 95
 
     val startChrom = cool.indexes.chrom_offset[w].toInt()
     val endChrom = cool.indexes.chrom_offset[w + 1].toInt()
@@ -108,8 +41,8 @@ fun moveLeft(cool: Cool, groupId: Int) {
     val insertChrom = 82
     val destination = cool.indexes.chrom_offset[insertChrom].toInt()
 
-    moveWeight(cool, startChrom, endChrom, destination, groupId)
-    moveChrom(cool, insertChrom, w + 1, groupId)
+    moveWeight(cool, startChrom, endChrom, destination)
+    moveChrom(cool, insertChrom, w + 1)
 
     val newBin1 = LongArray(cool.pixels.bin1_id.size)
     val newBin2 = LongArray(cool.pixels.bin1_id.size)
@@ -118,10 +51,12 @@ fun moveLeft(cool: Cool, groupId: Int) {
     var newIdx = 0
 
     newIdx = moveBeforeDst(cool, startChrom, endChrom, destination, newBin1, newBin2, newCount, newIdx)
-//    newIdx = moveAfterDst(cool, startChrom, endChrom, destination, newBin1, newBin2, newCount, newIdx)
+    newIdx = moveAfterDst(cool, startChrom, endChrom, destination, newBin1, newBin2, newCount, newIdx)
+    cool.pixels.bin1_id = newBin1
+    cool.pixels.bin2_id = newBin2
+    cool.pixels.count = newCount
 
-    writeStuff(groupId, newBin1, newBin2, newCount)
-    recalculateIndex(newBin1.toMutableList(), cool, groupId)
+    recalculateIndex(cool)
 }
 
 fun <A, B, C> partial2(f: (A, B) -> C, a: A): (B) -> C {
@@ -271,55 +206,4 @@ fun moveAfterDst(
     }
 
     return newIdx
-}
-
-fun writeStuff(groupId: Int, newBin1: LongArray, newBin2: LongArray, newCount: IntArray) {
-    val pGroupId = H5.H5Gopen(groupId, "pixels", HDF5Constants.H5P_DEFAULT)
-
-    var datasetId = H5.H5Dopen(pGroupId, "bin1_id", HDF5Constants.H5P_DEFAULT)
-    var tid = H5.H5Dget_type(datasetId)
-    var dspace = H5.H5Dget_space(datasetId)
-
-    H5.H5Dwrite(
-        datasetId,
-        tid,
-        HDF5Constants.H5S_ALL,
-        dspace,
-        HDF5Constants.H5P_DEFAULT,
-        newBin1
-    )
-
-    H5.H5Dclose(datasetId)
-
-    datasetId = H5.H5Dopen(pGroupId, "bin2_id", HDF5Constants.H5P_DEFAULT)
-    tid = H5.H5Dget_type(datasetId)
-    dspace = H5.H5Dget_space(datasetId)
-
-    H5.H5Dwrite(
-        datasetId,
-        tid,
-        HDF5Constants.H5S_ALL,
-        dspace,
-        HDF5Constants.H5P_DEFAULT,
-        newBin2
-    )
-
-    H5.H5Dclose(datasetId)
-
-    datasetId = H5.H5Dopen(pGroupId, "count", HDF5Constants.H5P_DEFAULT)
-    tid = H5.H5Dget_type(datasetId)
-    dspace = H5.H5Dget_space(datasetId)
-
-    H5.H5Dwrite(
-        datasetId,
-        tid,
-        HDF5Constants.H5S_ALL,
-        dspace,
-        HDF5Constants.H5P_DEFAULT,
-        newCount
-    )
-
-    H5.H5Dclose(datasetId)
-
-    if (pGroupId >= 0) H5.H5Gclose(pGroupId)
 }
