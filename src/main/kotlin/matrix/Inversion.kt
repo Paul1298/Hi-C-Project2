@@ -8,6 +8,7 @@ fun inverseHorizontal(cool: Cool, startChrom: Int, endChrom: Int) {
     // TODO: 18.11.2020 think about collection. You can use array in first cycle
     //  and List in second
     val m = mutableMapOf<Int, Pair<MutableList<Long>, MutableList<Int>>>()
+    val keys = arrayListOf<Long>()
 
     val breakMap = mutableMapOf<Int, Int>()
 
@@ -15,7 +16,7 @@ fun inverseHorizontal(cool: Cool, startChrom: Int, endChrom: Int) {
         val startIndex = cool.indexes.bin1_offset[i].toInt()
 
         var breakIndex = startIndex
-        while (breakIndex < cool.pixels.bin1_id.size &&
+        while (breakIndex < cool.nnz &&
             cool.pixels.bin1_id[startIndex] == cool.pixels.bin1_id[breakIndex] && cool.pixels.bin2_id[breakIndex] < endChrom
         ) breakIndex += 1
         breakMap[i] = breakIndex
@@ -30,6 +31,7 @@ fun inverseHorizontal(cool: Cool, startChrom: Int, endChrom: Int) {
             cool.pixels.count.slice(indices)
 
         m[i] = Pair(bin2Array.toMutableList(), countArray.toMutableList())
+        keys.add(i.toLong())
     }
 
     for (i in startChrom until endChrom) {
@@ -50,7 +52,7 @@ fun inverseHorizontal(cool: Cool, startChrom: Int, endChrom: Int) {
         val length = m[i]!!.first.size
 
         for (j in 0 until length) {
-            cool.pixels.bin1_id[prevIndex + j] = m.keys.sorted()[endChrom - 1 - i].toLong()
+            cool.pixels.bin1_id[prevIndex + j] = keys[endChrom - 1 - i]
             cool.pixels.bin2_id[prevIndex + j] = m[i]!!.first[j]
             cool.pixels.count[prevIndex + j] = m[i]!!.second[j]
         }

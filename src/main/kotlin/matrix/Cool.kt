@@ -35,6 +35,8 @@ data class Cool(val groupId: Int) {
     val indexes: Indexes
     val pixels: Pixels
 
+    val nnz: Int
+
     init {
         val (chrom, end, start, weight) = getGroup(groupId, "bins")
         bins = Bins(chrom as IntArray, end as IntArray, start as IntArray, weight as DoubleArray)
@@ -47,6 +49,8 @@ data class Cool(val groupId: Int) {
 
         val (bin1_id, bin2_id, count) = getGroup(groupId, "pixels")
         pixels = Pixels(bin1_id as LongArray, bin2_id as LongArray, count as IntArray)
+
+        nnz = bin1_id.size
     }
 }
 
@@ -80,6 +84,7 @@ fun getDataset(datasetId: Int, datasetName: String): Any {
             dataRead = arrayOfNulls<String>(size)
             for (i in 0 until size) {
                 dataRead[i] = String(byteBuff, i * stringLength, stringLength)
+//                println((dataRead[i] as String).length)
             }
             return dataRead
         }
@@ -149,37 +154,11 @@ fun updateCoolFile(cool: Cool, groupId: Int) {
             val tid = H5.H5Dget_type(datasetId)
             val dspace = H5.H5Dget_space(datasetId)
 
-            when (dataset.name) {
-                "weight" -> data = data as DoubleArray
-                "name" -> {
-//                    val dims = longArrayOf((data as Array<String>).size.toLong())
-//                    val dataspaceId = H5.H5Screate_simple(rank, dims, null)
-//
-//                    val strLength = 10
-//                    val datatype = H5.H5Tcopy(HDF5Constants.H5T_C_S1)
-//                    H5.H5Tset_size(datatype, strLength)
-//
-//                    val datasetId = H5.H5Dcreate(
-//                        gid, dataset.name, datatype, dataspaceId,
-//                        HDF5Constants.H5P_DEFAULT, HDF5Constants.H5P_DEFAULT, HDF5Constants.H5P_DEFAULT
-//                    )
-//
-//                    // TODO: 14.11.2020 expand with whitespaces to strLength
-//                    val byteBuff = data.joinToString("").toByteArray()
-//                    H5.H5Dwrite(
-//                        datasetId,
-//                        datatype,
-//                        HDF5Constants.H5S_ALL,
-//                        HDF5Constants.H5S_ALL,
-//                        HDF5Constants.H5P_DEFAULT,
-//                        byteBuff
-//                    );
-//
-//                    H5.H5Sclose(dataspaceId)
-//                    H5.H5Dclose(datasetId)
-                }
+            data = when (dataset.name) {
+                "weight" -> data as DoubleArray
+                "name" -> (data as Array<String>).joinToString("").toByteArray()
                 else -> {
-                    data = if (dataset.name.startsWith("bin") || dataset.name == "chrom_offset") {
+                    if (dataset.name.startsWith("bin") || dataset.name == "chrom_offset") {
                         data as LongArray
                     } else {
                         data as IntArray
@@ -187,16 +166,14 @@ fun updateCoolFile(cool: Cool, groupId: Int) {
                 }
             }
 
-            if (dataset.name != "name") {
-                H5.H5Dwrite(
-                    datasetId,
-                    tid,
-                    HDF5Constants.H5S_ALL,
-                    dspace,
-                    HDF5Constants.H5P_DEFAULT,
-                    data
-                )
-            }
+            H5.H5Dwrite(
+                datasetId,
+                tid,
+                HDF5Constants.H5S_ALL,
+                dspace,
+                HDF5Constants.H5P_DEFAULT,
+                data
+            )
             H5.H5Dclose(datasetId)
         }
         H5.H5Gclose(tableId)
@@ -255,6 +232,4 @@ fun main() {
     } catch (e: Exception) {
         e.printStackTrace()
     }
-
-//    writeCoolToFile(cool, "src/main/resources/mat18_101k.cool", 100000)
 }

@@ -28,8 +28,8 @@ fun moveChrom(cool: Cool, destination: Int, endChrom: Int) {
     cool.chroms.length.reverse(destination, endChrom)
     cool.chroms.length.reverse(destination + 1, endChrom)
 
-//    cool.chroms.name.reverse(destination, endChrom)
-//    cool.chroms.name.reverse(destination + 1, endChrom)
+    cool.chroms.name.reverse(destination, endChrom)
+    cool.chroms.name.reverse(destination + 1, endChrom)
 }
 
 fun moveLeft(cool: Cool) {
@@ -44,9 +44,9 @@ fun moveLeft(cool: Cool) {
     moveWeight(cool, startChrom, endChrom, destination)
     moveChrom(cool, insertChrom, w + 1)
 
-    val newBin1 = LongArray(cool.pixels.bin1_id.size)
-    val newBin2 = LongArray(cool.pixels.bin1_id.size)
-    val newCount = IntArray(cool.pixels.bin1_id.size)
+    val newBin1 = LongArray(cool.nnz)
+    val newBin2 = LongArray(cool.nnz)
+    val newCount = IntArray(cool.nnz)
 
     var newIdx = 0
 
