@@ -51,16 +51,12 @@ fun moveLeft(cool: Cool) {
     var newIdx = 0
 
     newIdx = moveBeforeDst(cool, startChrom, endChrom, destination, newBin1, newBin2, newCount, newIdx)
-    newIdx = moveAfterDst(cool, startChrom, endChrom, destination, newBin1, newBin2, newCount, newIdx)
+    moveAfterDst(cool, startChrom, endChrom, destination, newBin1, newBin2, newCount, newIdx)
     cool.pixels.bin1_id = newBin1
     cool.pixels.bin2_id = newBin2
     cool.pixels.count = newCount
 
     recalculateIndex(cool)
-}
-
-fun <A, B, C> partial2(f: (A, B) -> C, a: A): (B) -> C {
-    return { b: B -> f(a, b) }
 }
 
 fun moveBeforeDst(
